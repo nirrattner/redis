@@ -8287,7 +8287,7 @@ int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *client
     if (next_period <= 0) next_period = 1;
     if (raxSize(Timers) > 0) {
         if (debug_check_print(PRINT_EVENT__MODULE_EVENT_RETURN)) {
-            printf("MODULE_RETURN[%llu] %d\n", id, next_period);
+            printf("MODULE_RETURN[%llu] %llu, %llu\n", id, next_period, raxSize(Timers));
         }
 
         return next_period;
@@ -8333,7 +8333,7 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
         }
     }
 
-    printf("RM_CreateTimer[%llu] %llu, %llu\n", key, expiretime);
+    printf("RM_CreateTimer[%llu] %llu\n", key, expiretime);
 
 
     /* We need to install the main event loop timer if it's not already
