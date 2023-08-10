@@ -306,7 +306,7 @@ static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
 
     if (now >= earliest->when) {
       if (debug_check_print(PRINT_EVENT__EARLIERST_ZERO)) {
-          printf("EARLIEST_ZERO[%p]\n", te);
+          printf("EARLIEST_ZERO[%p] %llu, %llu\n", earliest, earliest->when, now);
       }
     }
 
@@ -371,11 +371,13 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             retval = te->timeProc(eventLoop, id, te->clientData);
             te->refcount--;
             processed++;
+
+            // TODO: Check `now` before reassign?
             now = getMonotonicUs();
 
             if (te->id != 0) {
               if (debug_check_print(PRINT_EVENT__EVENT_PROC)) {
-                  printf("EVENT_PROC[%p] %llu, %d\n", te, te->id, retval);
+                  printf("EVENT_PROC[%p] %llu, (%llu vs %llu) %d\n", te, te->id, te->when, now, retval);
               }
             }
 

@@ -8232,7 +8232,7 @@ int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *client
     UNUSED(clientData);
 
     if (debug_check_print(PRINT_EVENT__MODULE_EVENT_START)) {
-        printf("MODULE_EVENT_START[%llu]\n", id);
+        printf("MODULE_EVENT_START[%llu] %llu\n", id, raxSize(Timers));
     }
 
     /* To start let's try to fire all the timers already expired. */
