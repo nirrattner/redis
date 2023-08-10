@@ -60,6 +60,20 @@
 /* Macros */
 #define AE_NOTUSED(V) ((void) V)
 
+
+typedef enum {
+  PRINT_EVENT__TIMER_DELETED = 0,
+  PRINT_EVENT__EARLIERST_ZERO,
+  PRINT_EVENT__EVENT_PROC,
+  PRINT_EVENT__MODULE_EVENT_START,
+  PRINT_EVENT__MODULE_EVENT_RETURN,
+  PRINT_EVENT__MODULE_BREAK_NO_NEXT,
+  PRINT_EVENT__MODULE_BREAK_NEXT,
+
+  NUM_PRINT_EVENT,
+} print_event_t;
+int debug_check_print(print_event_t event);
+
 struct aeEventLoop;
 
 /* Types and data structures */

@@ -8231,14 +8231,28 @@ int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *client
     UNUSED(id);
     UNUSED(clientData);
 
+    if (debug_check_print(PRINT_EVENT__MODULE_EVENT_START)) {
+        printf("MODULE_EVENT_START[%llu]\n", id);
+    }
+
     /* To start let's try to fire all the timers already expired. */
     raxIterator ri;
     raxStart(&ri,Timers);
     uint64_t now = ustime();
     long long next_period = 0;
+    int count = 0;
     while(1) {
         raxSeek(&ri,"^",NULL,0);
-        if (!raxNext(&ri)) break;
+        if (!raxNext(&ri)) {
+
+          if (debug_check_print(PRINT_EVENT__MODULE_BREAK_NO_NEXT)) {
+              printf("MODULE_BREAK[%llu] NO NEXT (%d)\n", id, count);
+          }
+
+          break;
+        }
+
+        count++;
         uint64_t expiretime;
         memcpy(&expiretime,ri.key,sizeof(expiretime));
         expiretime = ntohu64(expiretime);
@@ -8259,6 +8273,11 @@ int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *client
              * the difference as unsigned (Causing next_period to be huge) in
              * case expiretime < ustime() */
             next_period = ((long long)expiretime-ustime())/1000; /* Scale to milliseconds. */
+
+            if (debug_check_print(PRINT_EVENT__MODULE_BREAK_NEXT)) {
+                printf("MODULE_BREAK[%llu] NEXT (%d)\n", id, count);
+            }
+
             break;
         }
     }
@@ -8267,8 +8286,15 @@ int moduleTimerHandler(struct aeEventLoop *eventLoop, long long id, void *client
     /* Reschedule the next timer or cancel it. */
     if (next_period <= 0) next_period = 1;
     if (raxSize(Timers) > 0) {
+        if (debug_check_print(PRINT_EVENT__MODULE_EVENT_RETURN)) {
+            printf("MODULE_RETURN[%llu] %d\n", id, next_period);
+        }
+
         return next_period;
     } else {
+        if (debug_check_print(PRINT_EVENT__MODULE_EVENT_RETURN)) {
+          printf("MODULE_RETURN[%llu] NO_MORE\n", id);
+        }
         aeTimer = -1;
         return AE_NOMORE;
     }
@@ -8295,6 +8321,8 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
     uint64_t expiretime = ustime()+period*1000;
     uint64_t key;
 
+    printf("RM_CreateTimer0 %llu, %llu\n", expiretime, period);
+
     while(1) {
         key = htonu64(expiretime);
         if (raxFind(Timers, (unsigned char*)&key,sizeof(key)) == raxNotFound) {
@@ -8304,6 +8332,9 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
             expiretime++;
         }
     }
+
+    printf("RM_CreateTimer[%llu] %llu, %llu\n", key, expiretime);
+
 
     /* We need to install the main event loop timer if it's not already
      * installed, or we may need to refresh its period if we just installed
@@ -8317,6 +8348,7 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
         if (memcmp(ri.key,&key,sizeof(key)) == 0) {
             /* This is the first key, we need to re-install the timer according
              * to the just added event. */
+            printf("RM_CreateTimer[%llu] Delete\n", key);
             aeDeleteTimeEvent(server.el,aeTimer);
             aeTimer = -1;
         }
@@ -8325,8 +8357,10 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
 
     /* If we have no main timer (the old one was invalidated, or this is the
      * first module timer we have), install one. */
-    if (aeTimer == -1)
+    if (aeTimer == -1) {
+        printf("RM_CreateTimer[%llu] Create\n", key);
         aeTimer = aeCreateTimeEvent(server.el,period,moduleTimerHandler,NULL,NULL);
+    }
 
     return key;
 }
@@ -8336,6 +8370,7 @@ RedisModuleTimerID RM_CreateTimer(RedisModuleCtx *ctx, mstime_t period, RedisMod
  * If not NULL, the data pointer is set to the value of the data argument when
  * the timer was created. */
 int RM_StopTimer(RedisModuleCtx *ctx, RedisModuleTimerID id, void **data) {
+    printf("RM_StopTimer[%llu]\n", id);
     RedisModuleTimer *timer = raxFind(Timers,(unsigned char*)&id,sizeof(id));
     if (timer == raxNotFound || timer->module != ctx->module)
         return REDISMODULE_ERR;

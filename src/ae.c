@@ -64,11 +64,31 @@
 #endif
 
 
+long long last_print[NUM_PRINT_EVENT];
+long long count[NUM_PRINT_EVENT];
+
+int debug_check_print(print_event_t event) {
+  long long now = getMonotonicUs();
+  count[event]++;
+  if (now - last_print[event] < 2000000) {
+    return 0;
+  }
+  printf("(C%llu) ", count[event]);
+  last_print[event] = now;
+  count[event] = 0;
+  return 1;
+}
+
 aeEventLoop *aeCreateEventLoop(int setsize) {
     aeEventLoop *eventLoop;
     int i;
 
     monotonicInit();    /* just in case the calling app didn't initialize */
+
+    for (i = 0; i < NUM_PRINT_EVENT; i++) {
+      last_print[i] = 0;
+      count[i] = 0;
+    }
 
     if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
     eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
@@ -219,8 +239,12 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     long long id = eventLoop->timeEventNextId++;
     aeTimeEvent *te;
 
+
     te = zmalloc(sizeof(*te));
     if (te == NULL) return AE_ERR;
+
+    printf("aeCreateTimeEvent[%p] %llu, %llu\n", te, id, milliseconds);
+
     te->id = id;
     te->when = getMonotonicUs() + milliseconds * 1000;
     te->timeProc = proc;
@@ -237,9 +261,13 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
 
 int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
 {
+    printf("aeDeleteTimeEvent %llu\n", id);
+
     aeTimeEvent *te = eventLoop->timeEventHead;
     while(te) {
         if (te->id == id) {
+            printf("aeDeleteTimeEvent[%p] %llu, %llu\n", te, id, te->when);
+
             te->id = AE_DELETED_EVENT_ID;
             return AE_OK;
         }
@@ -263,12 +291,25 @@ static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
 
     aeTimeEvent *earliest = NULL;
     while (te) {
-        if (!earliest || te->when < earliest->when)
+        if (!earliest || te->when < earliest->when) {
+            if (te->id == AE_DELETED_EVENT_ID) {
+              if (debug_check_print(PRINT_EVENT__TIMER_DELETED)) {
+                  printf("TIMER_DELETED[%p]\n", te);
+              }
+            }
             earliest = te;
+        }
         te = te->next;
     }
 
     monotime now = getMonotonicUs();
+
+    if (now >= earliest->when) {
+      if (debug_check_print(PRINT_EVENT__EARLIERST_ZERO)) {
+          printf("EARLIEST_ZERO[%p]\n", te);
+      }
+    }
+
     return (now >= earliest->when) ? 0 : earliest->when - now;
 }
 
@@ -286,11 +327,13 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
 
         /* Remove events scheduled for deletion. */
         if (te->id == AE_DELETED_EVENT_ID) {
+            printf("removing[%p]\n", te);
             aeTimeEvent *next = te->next;
             /* If a reference exists for this timer event,
              * don't free it. This is currently incremented
              * for recursive timerProc calls */
             if (te->refcount) {
+                printf("refcount[%p]\n", te);
                 te = next;
                 continue;
             }
@@ -324,10 +367,18 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
 
             id = te->id;
             te->refcount++;
+
             retval = te->timeProc(eventLoop, id, te->clientData);
             te->refcount--;
             processed++;
             now = getMonotonicUs();
+
+            if (te->id != 0) {
+              if (debug_check_print(PRINT_EVENT__EVENT_PROC)) {
+                  printf("EVENT_PROC[%p] %llu, %d\n", te, te->id, retval);
+              }
+            }
+
             if (retval != AE_NOMORE) {
                 te->when = now + retval * 1000;
             } else {
